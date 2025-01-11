@@ -23,13 +23,12 @@ router.use(auth);
 
 // Esquema de validación para los datos del libro
 const libroSchema = Joi.object({
-    titulo: Joi.string().pattern(/^[a-zA-ZáéíóúÁÉÍÓÚ\s]*$/).required(),
-    autor: Joi.string().pattern(/^[a-zA-ZáéíóúÁÉÍÓÚ\s]*$/).required(),
+    titulo: Joi.string().required(),
+    autor: Joi.string().required(),
     descripcion: Joi.string().optional(),
-    categoria: Joi.string().pattern(/^[a-zA-ZáéíóúÁÉÍÓÚ\s]*$/).required(),
+    categoria: Joi.string().required(),
     año_publicacion: Joi.number().integer().min(1900).max(new Date().getFullYear()).required()
 });
-
 
 // Ruta para obtener todos los libros
 router.get('/', async (req, res) => {
