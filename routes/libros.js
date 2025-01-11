@@ -1,13 +1,16 @@
 // routes/libros.js
 import express from 'express';
-import mysql from 'mysql2';
+import mysql from 'mysql2/promise';
 import dotenv from 'dotenv';
 import auth from '../middleware/auth.js'; // Middleware de autenticación
+import Joi from 'joi'; // Librería para validación
 
 dotenv.config();
 
 const router = express.Router();
-const db = mysql.createConnection({
+
+// Crear una conexión pool para un mejor manejo de conexiones
+const db = mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
@@ -15,51 +18,77 @@ const db = mysql.createConnection({
     connectTimeout: 10000,
 });
 
-db.connect((err) => {
-    if (err) throw err;
-    console.log('MySQL Connected...');
-});
-
-// Proteger todas las rutas con `auth`
+// Middleware para proteger todas las rutas
 router.use(auth);
 
-// Definir rutas
-router.get('/', (req, res) => {
-    const sql = 'SELECT * FROM libros';
-    db.query(sql, (err, result) => {
-        if (err) throw err;
-        res.json(result);
-    });
+// Esquema de validación para los datos del libro
+const libroSchema = Joi.object({
+    titulo: Joi.string().required(),
+    autor: Joi.string().required(),
+    descripcion: Joi.string().optional(),
+    categoria: Joi.string().required(),
+    año_publicacion: Joi.number().integer().min(1900).max(new Date().getFullYear()).required()
 });
 
-router.post('/', (req, res) => {
+// Ruta para obtener todos los libros
+router.get('/', async (req, res) => {
+    try {
+        const [rows] = await db.query('SELECT * FROM libros');
+        res.json(rows);
+    } catch (err) {
+        res.status(500).json({ message: 'Error al obtener los libros', error: err.message });
+    }
+});
+
+// Ruta para agregar un nuevo libro
+router.post('/', async (req, res) => {
+    const { error } = libroSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.details[0].message });
+
     const { titulo, autor, descripcion, categoria, año_publicacion } = req.body;
-    const sql = 'INSERT INTO libros (titulo, autor, descripcion, categoria, año_publicacion) VALUES (?, ?, ?, ?, ?)';
-    db.query(sql, [titulo, autor, descripcion, categoria, año_publicacion], (err, result) => {
-        if (err) throw err;
-        res.json({ id: result.insertId, ...req.body });
-    });
+
+    try {
+        const [result] = await db.query('INSERT INTO libros (titulo, autor, descripcion, categoria, año_publicacion) VALUES (?, ?, ?, ?, ?)', 
+            [titulo, autor, descripcion, categoria, año_publicacion]);
+        res.status(201).json({ id: result.insertId, ...req.body });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al agregar el libro', error: err.message });
+    }
 });
 
-// Actualizar un libro
-router.put('/:id', (req, res) => {
+// Ruta para actualizar un libro
+router.put('/:id', async (req, res) => {
     const { id } = req.params;
+    const { error } = libroSchema.validate(req.body);
+    if (error) return res.status(400).json({ message: error.details[0].message });
+
     const { titulo, autor, descripcion, categoria, año_publicacion } = req.body;
-    const sql = 'UPDATE libros SET titulo = ?, autor = ?, descripcion = ?, categoria = ?, año_publicacion = ? WHERE id = ?';
-    db.query(sql, [titulo, autor, descripcion, categoria, año_publicacion, id], (err) => {
-        if (err) throw err;
+
+    try {
+        const [result] = await db.query('UPDATE libros SET titulo = ?, autor = ?, descripcion = ?, categoria = ?, año_publicacion = ? WHERE id = ?', 
+            [titulo, autor, descripcion, categoria, año_publicacion, id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Libro no encontrado' });
+        }
         res.json({ message: 'Libro actualizado' });
-    });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al actualizar el libro', error: err.message });
+    }
 });
 
-// Eliminar un libro
-router.delete('/:id', (req, res) => {
+// Ruta para eliminar un libro
+router.delete('/:id', async (req, res) => {
     const { id } = req.params;
-    const sql = 'DELETE FROM libros WHERE id = ?';
-    db.query(sql, [id], (err) => {
-        if (err) throw err;
+
+    try {
+        const [result] = await db.query('DELETE FROM libros WHERE id = ?', [id]);
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ message: 'Libro no encontrado' });
+        }
         res.json({ message: 'Libro eliminado' });
-    });
+    } catch (err) {
+        res.status(500).json({ message: 'Error al eliminar el libro', error: err.message });
+    }
 });
 
 export default router;
